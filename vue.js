@@ -191,9 +191,100 @@
     ASSET_TYPES.forEach(function(type){
         strats[type + 's'] = mergeAssets;
     });
+    //watch的自定义策略
+    strats.watch = function(parentVal, childVal, vm, key){
+        if(!childVal){
+            return Object.create(parentVal || null)
+        }
+        assertObjectType(key, childVal, vm);
+        if(!parentVal){
+            return childVal
+        }
+        var res = {};
+        extend(res, parentVal)
+        for(var key in childVal){
+            var parent = res[key];
+            var child = childVal[key];
+            if(parent && !Array.isArray(parent)){
+                parent = [parent]
+            }
+            res[key] = parent ? parent.concat(child) : Array.isArray(child) ? child : [child];
+        }
+        return res;
+    };
+    //props选项的自定义策略
+    strats.props = function(parentVal, childVal, vm, key){
+        if(!parentVal){
+            return childVal;
+        }
+        var res = Object.create(null);
+        extend(res, parentVal);
+        if(childVal){
+            extend(res, childVal)
+        }
+        return res;
+    };
+    function normalizeDirectives(options){
+        var dirs = options.directives;
+        if(dirs){
+            for(var key in dirs){
+                var def = dirs[key];
+                if(typeof def === 'function'){
+                    dirs[key] = {
+                        bind: def,
+                        update: def
+                    }
+                }
+            }
+        }
+    }
+    var camelizeRE = /-(\w)/g;
+    function camelize(str){
+        //将中横线转成驼峰形式的命名
+        return str.replace(camelizeRE, function(_, c){
+            return c ? c.toUpperCase() : "";
+        })
+    }
+    function normalizeProps(options){
+        var props = options.props;
+        if(!props){
+            return;
+        }
+        var res = {};
+        var i,val,name;
+        if(Array.isArray(props)){
+            i = props.length;
+            while (i--){
+                val = props[i];
+                if(typeof val === 'string'){
+                    name = camelize(val);
+                    res[name] = {
+                        type: null
+                    }
+                } else {
+                    warn("使用数组时，应该用字符串来定义:" + val)
+                }
+            }
+        } else if(isPlainObject(props)){
+            for(var key in props){
+                val = props[key]
+                name = camelize(key);
+                res[name] = isPlainObject(val) ? val : {
+                    type: null
+                }
+            }
+        } else {
+            warn("props应该为数组或对象")
+        }
+        options.props = res;
+    }
     function mergeOptions(parent, child, vm){
         //组件规范检测
         checkComponents(child);
+        //规范props选项
+        normalizeProps(child);
+        //规范directives指令选项
+        normalizeDirectives(child);
         var options = {};
         var key;
         for(key in parent){
