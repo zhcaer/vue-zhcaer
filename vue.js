@@ -14,6 +14,37 @@
     var hasOwn = function (obj, key){
         hasOwnProperty.call(obj, key)
     };
+    //判断是否Object对象
+    function isPlainObject(obj){
+        return toString.call(obj) === "[object Object]"
+    }
+    //拷贝对象
+    function extend(to, _form) {
+        for (var key in _form) {
+            to[key] = _form[key]
+        }
+        return to;
+    }
+    //资源选项
+    var ASSET_TYPES = [
+        'component',
+        'directive',
+        'filter'
+    ];
+    //钩子函数
+    var LIFECYCLE_HOOKS = [
+        'beforeCreate',
+        'created',
+        'beforeMount',
+        'mounted',
+        'beforeUpdate',
+        'updated',
+        'beforeDestroy',
+        'destroyed',
+        'activated',
+        'deactivated',
+        'errorCaptured'
+    ];
     //HTML元素
     var isHTMLTag = makeMap(
         'html,body,base,head,link,meta,style,title,' +
@@ -88,10 +119,39 @@
         }
         return defaultStrat(parent, child);
     };
-    //data选项的自定义策略
-    function mergeDataorFn(){
-
+    function mergeData(to, _form){
+        if(!_form){
+            return to;
+        }
+        //选项的终极合并
     }
+    function mergeDataorFn(parentVal, childVal, vm){
+        if(!vm){    //组件、子类
+            if(!childVal){
+                return parentVal;
+            }
+            if(!parentVal){
+                return childVal;
+            }
+            return function mergeDataFn(parentVal, childVal){
+                mergeData(
+                    typeof childVal === 'function' ? childVal.call(vm, vm) : childVal,
+                    typeof parentVal === 'function' ? parentVal.call(vm, vm) : parentVal
+                )
+            }
+        } else {    //实例对象
+            return function mergedInstanceDataFn(){
+                var defaultData = typeof parentVal === 'function' ? parentVal.call(this, this) : parentVal;
+                var instanceData = typeof childVal === 'function' ? childVal.call(this, this) : childVal;
+                if(instanceData){
+                    mergeData(instanceData, defaultData)
+                } else {
+                    return defaultData;
+                }
+            }
+        }
+    }
+    //data选项的自定义策略
     strats.data = function(parentVal, childVal, vm, key){
         //组件、子类
         if(!vm){
@@ -103,6 +163,34 @@
         //实例对象
         return mergeDataorFn(parentVal, childVal, vm)
     };
+    function mergeHook(parentVal, childVal){
+        return childVal ?
+            parentVal ?
+                parentVal.concat(childVal) :
+                Array.isArray(childVal) ? childVal : [childVal] : parentVal;
+    }
+    //钩子函数的自定义策略
+    LIFECYCLE_HOOKS.forEach(function(hook){
+        strats[hook] = mergeHook;
+    });
+    function assertObjectType(name, value, vm){
+        if(!isPlainObject(value)){
+            warn("选项"+name+"的值无效，必须是个对象。")
+        }
+    }
+    function mergeAssets(parentVal, childVal, vm, key){
+        //继承实例原型上的内置组件
+        var res = Object.create(parentVal || null);
+        if(childVal){
+            assertObjectType(key, childVal, vm);
+            return extend(res, childVal);
+        }
+        return res;
+    }
+    //资源选项自定义策略
+    ASSET_TYPES.forEach(function(type){
+        strats[type + 's'] = mergeAssets;
+    });
     function mergeOptions(parent, child, vm){
         //组件规范检测
         checkComponents(child);
@@ -141,7 +229,33 @@
         //初始化
         this._init(options)
     }
+    function initExtend(Vue){
+        Vue.extend = function(extendOptions){
+            extendOptions = extendOptions || {};
+            var Super = this;
+            var Sub = function(options){
+                this._init(options);
+            };
+            Sub.prototype = Object.create(Super.prototype);
+            Sub.prototype.constructor = Sub;
+            Sub.options = mergeOptions(Super.options, extendOptions);
+            Sub.extend = Super.extend;
+            return Sub;
+        }
+    }
+    //全局API
+    Vue.options = {
+        components: {   //内置组件
+            keepAlive:{},
+            transition:{},
+            transitionGroup:{}
+        },
+        directives: {},
+        _base: Vue
+    };
     //初始化
     initMixin(Vue);
+    //初始化全局配置函数
+    initExtend(Vue)
     return Vue;
 });
