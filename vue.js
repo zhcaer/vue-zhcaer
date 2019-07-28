@@ -302,6 +302,80 @@
         }
         return options;
     }
+    function isNative(Ctor) {
+        return typeof Ctor === "function" && /native code/.test(Proxy.toString());
+    }
+    var hasProxy = typeof Proxy !== "undefined" && isNative(Proxy);
+    function warnNonPresent(target, key) {
+        warn("属性或方法" + key+"未在实例对象上定义,渲染功能正在尝试访问这个不存在的属性.")
+    }
+    var allowedGlobals = makeMap(
+        'Infinity,undefined,NaN,isFinite,isNaN,' +
+        'parseFloat,parseInt,decodeURI,decodeURIComponent,encodeURI,encodeURIComponent,' +
+        'Math,Number,Date,Array,Object,Boolean,String,RegExp,Map,Set,JSON,Intl,' +
+        'require'
+    );
+    var hasHeader = {
+        has: function (target, key) {
+            var has = key in target;
+            //key是否是全局对象或内置方法
+            var isAllowed = allowedGlobals(key) || (typeof key === "string" && key.charAt(0, "_"));
+            if(!has || !isAllowed){
+                warnNonPresent(target, key)
+            }
+            return has;
+        }
+    };
+    var getHeader = {
+        get: function (target, key) {
+            if(typeof key === 'string' && !(key in target)){
+                warnNonPresent(target, key);
+                return target[key];
+            }
+        }
+    };
+    function  initProxy(vm) {
+        //es6  proxy  检测
+        if(hasProxy){
+            var options = vm.$options;
+            //拦截哪些操作
+            var Headers = options.render && options.render.withStripped ? getHeader : hasHeader;
+            vm._renderProxy = new Proxy(vm, Headers)
+        } else {
+            vm._renderProxy = vm;
+        }
+    }
+    function initLifecycle(vm) {
+        var options = vm.$options;
+        //父实例引用父组件
+        var parent = options.parent;
+        //获取父组件且组件不是抽象组件
+        if(parent && options.abstract){
+            //自动侦测过程
+            while(parent.$options.abstract && parent.$parent){
+                //非抽象组件的父组件
+                parent = parent.$parent;
+                //添加当前实例到父组件的$children属性中
+                parent.$children.push(vm);
+            }
+        }
+        // $parent的值指向父级
+        vm.$parent = parent;
+        //设置$root
+        vm.$root = parent ? parent.$root : vm;
+        //当前实例的子组件实例数组
+        vm.$children = [];
+        vm.$refs = {};
+        vm._watcher = null;
+        vm._inactive = null;
+        vm._directInactive = false;
+        //是否挂载
+        vm._isMounted = false;
+        //是否销毁
+        vm._isDestroyed = false;
+        //是否正在销毁
+        vm._isBeingDestroyed = false;
+    }
     function initMixin(Vue){
         Vue.prototype._init = function(options){
             var vm = this;
@@ -309,6 +383,10 @@
             vm._uid = _uid++;
             //返回一个选项对象
             vm.$options = mergeOptions(resolveConstructorOptions(vm.constructor), options, vm);
+            //渲染函数的作用域代理
+            initProxy(vm)
+            //将当前实例添加到父实例的$children属性中,并设置自身的 $parent属性指向父实例
+            initLifecycle(vm)
         };
     }
     //构造函数
