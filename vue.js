@@ -135,16 +135,16 @@
             }
             return function mergeDataFn(parentVal, childVal){
                 mergeData(
-                    typeof childVal === 'function' ? childVal.call(vm, vm) : childVal,
-                    typeof parentVal === 'function' ? parentVal.call(vm, vm) : parentVal
+                    typeof childVal === 'function' ? childVal.call(this, this) : childVal,
+                    typeof parentVal === 'function' ? parentVal.call(this, this) : parentVal
                 )
             }
         } else {    //实例对象
             return function mergedInstanceDataFn(){
-                var defaultData = typeof parentVal === 'function' ? parentVal.call(this, this) : parentVal;
-                var instanceData = typeof childVal === 'function' ? childVal.call(this, this) : childVal;
+                var defaultData = typeof parentVal === 'function' ? parentVal.call(vm, vm) : parentVal;
+                var instanceData = typeof childVal === 'function' ? childVal.call(vm, vm) : childVal;
                 if(instanceData){
-                    mergeData(instanceData, defaultData)
+                    return mergeData(instanceData, defaultData)
                 } else {
                     return defaultData;
                 }
@@ -212,8 +212,10 @@
         }
         return res;
     };
-    //props选项的自定义策略
-    strats.props = function(parentVal, childVal, vm, key){
+    //props、methods、computed选项的自定义策略
+    strats.props =
+    strats.methods =
+    strats.computed = function(parentVal, childVal, vm, key){
         if(!parentVal){
             return childVal;
         }
@@ -334,15 +336,90 @@
             }
         }
     };
-    function  initProxy(vm) {
-        //es6  proxy  检测
-        if(hasProxy){
-            var options = vm.$options;
-            //拦截哪些操作
-            var Headers = options.render && options.render.withStripped ? getHeader : hasHeader;
-            vm._renderProxy = new Proxy(vm, Headers)
+    //响应式系统的入口
+    function observe(){
+
+    }
+    function callHook(vm, hook){
+        var headers = vm.$options[hook];
+        if(headers){
+            for(var i=0,j=headers.length; i<j; i++){
+                headers[i].call(vm);
+            }
+        }
+    }
+    function initProps(vm, props){
+
+    }
+    function initMethods(vm, methos){
+
+    }
+    function initComputed(vm, computed){
+
+    }
+    var noop = function(){};
+    var sharedProperty = {
+        enumerable: true,
+        configurable: true,
+        get: noop,
+        set: noop,
+    };
+    //代理
+    function proxy(target, data, key){
+        sharedProperty.get = function(){
+            return this[data][key]
+        };
+        sharedProperty.set = function(val){
+            this[data][key] = val;
+        };
+        Object.defineProperty(target, key, sharedProperty)
+    }
+    function isReserved(str){
+        var c = (str + "").charCodeAt(0);//Unicode编码
+        return c === 0x24 || c === 0x5f;
+    }
+    function getData(data, vm){
+        return data.call(vm, vm);
+    }
+    function initData(vm){
+        var data = vm.$options.data;
+        data = vm._data = typeof data === 'function' ? getData(data, vm) : data || {};
+        if(!isPlainObject(data)){
+            data = {};
+            warn("data选项应该为object对象")
+        }
+        var keys = Object.keys(data);
+        var props = vm.$options.props;
+        var methods = vm.$options.methods;
+        var computed = vm.$options.computed;
+        var i = keys.length;
+        while(i--){
+            var key = keys[i];
+            if(methods && hasOwn(methods, key)){
+                warn("methods:"+key+"选项已经定义为data的属性。")
+            }
+            if(props && hasOwn(props, key)){
+                warn("props:"+key+"选项已经定义为data的属性。")
+            } else if(!isReserved(key)) {
+                proxy(vm, "_data", key)
+            }
+        }
+    }
+    function initState(vm){
+        var opts = vm.$options;
+        if(opts.props){
+            initProps(vm, opts.props)
+        }
+        if(opts.methods){
+            initMethods(vm, opts.methods)
+        }
+        if(opts.computed){
+            initComputed(vm, opts.computed)
+        }
+        if(opts.data){
+            initData(vm)
         } else {
-            vm._renderProxy = vm;
+            observe(vm._data = {}, true)
         }
     }
     function initLifecycle(vm) {
@@ -376,6 +453,17 @@
         //是否正在销毁
         vm._isBeingDestroyed = false;
     }
+    function  initProxy(vm) {
+        //es6  proxy  检测
+        if(hasProxy){
+            var options = vm.$options;
+            //拦截哪些操作
+            var Headers = options.render && options.render.withStripped ? getHeader : hasHeader;
+            vm._renderProxy = new Proxy(vm, Headers)
+        } else {
+            vm._renderProxy = vm;
+        }
+    }
     function initMixin(Vue){
         Vue.prototype._init = function(options){
             var vm = this;
@@ -384,9 +472,13 @@
             //返回一个选项对象
             vm.$options = mergeOptions(resolveConstructorOptions(vm.constructor), options, vm);
             //渲染函数的作用域代理
-            initProxy(vm)
+            initProxy(vm);
             //将当前实例添加到父实例的$children属性中,并设置自身的 $parent属性指向父实例
-            initLifecycle(vm)
+            initLifecycle(vm);
+            //执行钩子函数beforCreate
+            callHook(vm, "beforeCreate");
+            //数据初始化
+            initState(vm)
         };
     }
     //构造函数
@@ -425,6 +517,6 @@
     //初始化
     initMixin(Vue);
     //初始化全局配置函数
-    initExtend(Vue)
+    initExtend(Vue);
     return Vue;
 });

@@ -26,9 +26,20 @@
                     bind: function(){}
                 },
                 test2: function(){}
+            },
+            beforeCreate: function(){
+              console.log("beforeCreate")
+            },
+            methods: {
+                add: function(){}
+            },
+            computed: {
+                menry: function(){}
             }
         });
-        console.log(vm)
+        console.log(vm.name);
+        vm.name = "hello word!";
+        console.log(vm.name);
     </script>
 </body>
 </html>
