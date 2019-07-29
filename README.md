@@ -9,3 +9,6 @@ vue官网:https://cn.vuejs.org/
 四.渲染函数的作用域代理、将当前实例添加到父实例的$children属性中,并设置自身的 $parent属性指向父实例
 
 五.methods、computed的自定义策略、执行钩子函数beforCreate、数据初始化(data)、vm代理data选项
+
+六.数据加入响应式系统,数据对象属性的可扩展,不可枚举和转化访问器属性,依赖收集、调用和更新
+

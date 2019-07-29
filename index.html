@@ -12,34 +12,21 @@
         var vm = new Vue({
             el: "#app",
             data: {
-                name: "zhcaer"
+                name: "zhcaer",
+                email: "1775724868@qq.com",
+                list: {
+                    age: 34
+                }
             },
-            props: [
-                "name"
-            ],
-            components: {
-                "component-a": {},
-            },
-            created: function(){},
-            directives: {
-                test1: {
-                    bind: function(){}
-                },
-                test2: function(){}
+            created: function(){
+                console.log("created->数据已经初始化："+this.name);
+                this.list.age = 18;
             },
             beforeCreate: function(){
-              console.log("beforeCreate")
+                console.log("beforeCreate->数据还没有初始化："+this.name)
             },
-            methods: {
-                add: function(){}
-            },
-            computed: {
-                menry: function(){}
-            }
         });
-        console.log(vm.name);
-        vm.name = "hello word!";
-        console.log(vm.name);
+        console.log("变成"+vm.list.age+"岁了")
     </script>
 </body>
 </html>

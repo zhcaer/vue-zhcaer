@@ -103,13 +103,24 @@
             validateComponentName(key)
         }
     }
-    //默认策略
-    var defaultStrat = function(parentVal, childVal){
-        return childVal === undefined ? parentVal : childVal;
+    //全局API
+    Vue.options = {
+        components: {   //内置组件
+            keepAlive:{},
+            transition:{},
+            transitionGroup:{}
+        },
+        directives: {},
+        _base: Vue
     };
+    //配置
     var config = {
         optionMergeStrategies: {}
     };
+    //默认策略
+    function defaultStrat(parentVal, childVal){
+        return childVal === undefined ? parentVal : childVal;
+    }
     //自定义策略
     var strats = config.optionMergeStrategies;
     //el选项的自定义策略
@@ -336,10 +347,6 @@
             }
         }
     };
-    //响应式系统的入口
-    function observe(){
-
-    }
     function callHook(vm, hook){
         var headers = vm.$options[hook];
         if(headers){
@@ -356,6 +363,110 @@
     }
     function initComputed(vm, computed){
 
+    }
+
+    var isObject = function(obj){
+        return obj !== null && typeof obj === 'object';
+    };
+    //开关
+    var shouldObserve = true;
+    function toggleObServing(value){
+        shouldObserve = value;
+    }
+    //响应式系统的核心,将数据对象的属性转化成访问器属性 getter setter
+    function defineReactive(obj, key, val, shallow){
+        var dep = new Dep();    //收集依赖
+        var property = Object.getOwnPropertyDescriptor(obj, key);
+        var getter = property && property.get;
+        var setter = property && property.set;
+        if((!getter || setter) && arguments.length === 2){
+            val = obj[key]; //深度观测
+        }
+        var childOb = !shallow && observe(val);
+        Object.defineProperty(obj, key, {
+            get: function(){    //依赖收集
+                var value = getter ? getter.call(obj) : val;
+                if(Dep.target){
+                    dep.depend();
+                    if(childOb){
+                        childOb.dep.depend();
+                    }
+                }
+                return value;
+            },
+            set: function(newVal){ //调用收集的依赖
+                var vaule = getter ? getter.call(obj) : val;
+                if(newVal === vaule || (newVal !== newVal && value !== value)){
+                    return;
+                }
+                if(setter){
+                    setter.call(obj, newVal)
+                } else {
+                    val = newVal;
+                }
+                childOb = !shallow && observe(val);
+                dep.notify();
+            }
+        });
+
+    }
+    function Dep() {
+        this.subs = [];
+    }
+    Dep.target = null;
+    Dep.prototype.depend = function(){
+        console.log("依赖收集");
+    };
+    Dep.prototype.addSub = function(sub){
+        this.subs.push(sub);
+    };
+    Dep.prototype.notify = function(){
+        var subs = this.subs.slice();
+        for(var i = 0; i<subs.length; i++){
+            subs[i].update();    //依赖更新
+        }
+    };
+    function def(obj, key, val) {
+        Object.defineProperty(obj, key, {
+            value: val,
+            enumerable: false,   //属性不可枚举
+            configurable: true,  //属性可配置
+        })
+    }
+    function Observe(value){
+        this.value = value;
+        this.vmCount = 0;
+        //回调列表->依赖
+        this.dep = new Dep();
+        //添加__ob__标志
+        def(value, "__ob__", this);
+        //递归
+        this.walk(value);
+    }
+    Observe.prototype.walk = function walk(obj){
+        var keys = Object.keys(obj);
+        for(var i=0,j=keys.length; i<j; i++){
+            defineReactive(obj, keys[i]);
+        }
+    };
+    //响应式系统的入口
+    function observe(value, asRootData){
+        if(!isObject(value)){
+            return;
+        }
+        var ob;
+        if(hasOwn(value, "__ob__") && value.__ob__ instanceof Observe){
+            ob = value.__ob__
+        } else if(shouldObserve &&
+            (Array.isArray(value) || isPlainObject(value) &&
+                Object.isExtensible(value) && //是否可扩展
+                !value._isVue)){
+            ob = new Observe(value);
+        }
+        if(ob && asRootData){
+            ob.vmCount++;
+        }
+        return ob;
     }
     var noop = function(){};
     var sharedProperty = {
@@ -404,6 +515,7 @@
                 proxy(vm, "_data", key)
             }
         }
+        observe(data, true)
     }
     function initState(vm){
         var opts = vm.$options;
@@ -469,6 +581,8 @@
             var vm = this;
             //有多少个Vue的实例对象
             vm._uid = _uid++;
+            //标志
+            vm._isVue = true;
             //返回一个选项对象
             vm.$options = mergeOptions(resolveConstructorOptions(vm.constructor), options, vm);
             //渲染函数的作用域代理
@@ -478,10 +592,12 @@
             //执行钩子函数beforCreate
             callHook(vm, "beforeCreate");
             //数据初始化
-            initState(vm)
+            initState(vm);
+            //执行钩子函数created
+            callHook(vm, "created");
         };
     }
-    //构造函数
+    //Vue构造函数
     function Vue(options){
         //安全机制
         if(!(this instanceof Vue)){
@@ -504,19 +620,9 @@
             return Sub;
         }
     }
-    //全局API
-    Vue.options = {
-        components: {   //内置组件
-            keepAlive:{},
-            transition:{},
-            transitionGroup:{}
-        },
-        directives: {},
-        _base: Vue
-    };
     //初始化
     initMixin(Vue);
-    //初始化全局配置函数
+    //初始化全局配置
     initExtend(Vue);
     return Vue;
 });
