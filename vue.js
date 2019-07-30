@@ -364,15 +364,55 @@
     function initComputed(vm, computed){
 
     }
-
     var isObject = function(obj){
         return obj !== null && typeof obj === 'object';
     };
+    var hasProto = "__proto__" in {};
     //开关
     var shouldObserve = true;
     function toggleObServing(value){
         shouldObserve = value;
     }
+    //代理原型
+    var arrayProto = Array.prototype;
+    var arrayMethods = Object.create(arrayProto);
+    var methodsToPatch = [
+        'push',
+        'pop',
+        'shift',
+        'unshift',
+        'splice',
+        'sort',
+        'reverse',
+    ];
+    methodsToPatch.forEach(function(key){
+        var cacheMothods = arrayProto[key];
+        def(arrayMethods, key, function(){
+            var args = [],
+                len = arguments.length;
+            while(len--){
+                args[len] = arguments[len]
+            }
+            var ob = this.__ob__;
+            var inserted;
+            var result = cacheMothods.apply(this, args);
+            switch(key){
+                case "push":
+                case "unshift":
+                    inserted = args;
+                    break;
+                case "splice":
+                    inserted = args.slice(2);
+            }
+            if(inserted){
+                //监听新添加的数据，加入响应式系统中
+                ob.observeArray(inserted);
+            }
+            //通知依赖更新
+            ob.dep.notify();
+            return result;
+        });
+    });
     //响应式系统的核心,将数据对象的属性转化成访问器属性 getter setter
     function defineReactive(obj, key, val, shallow){
         var dep = new Dep();    //收集依赖
@@ -440,15 +480,37 @@
         this.dep = new Dep();
         //添加__ob__标志
         def(value, "__ob__", this);
-        //递归
-        this.walk(value);
+        if(Array.isArray(value)){
+            //数组的处理
+            var augment = hasProto ? protoAugment : copyAugment;
+            augment(value, arrayMethods, arrayKeys);
+        } else {
+            //递归
+            this.walk(value);
+        }
     }
+    Observe.prototype.observeArray = function(items){
+        for(var i = 0, j = items.length; i<j; i++){
+            observe(items[i])
+        }
+    };
     Observe.prototype.walk = function walk(obj){
         var keys = Object.keys(obj);
         for(var i=0,j=keys.length; i<j; i++){
             defineReactive(obj, keys[i]);
         }
     };
+    function protoAugment(target, src) {    //目标源，代理原型对象
+        target.__proto__ = src;
+    }
+    var arrayKeys = Object.getOwnPropertyNames(arrayMethods);
+    //兼容IE11以下的浏览器，__proto__
+    function copyAugment(target, src, keys) {
+        for(var i = 0, j = keys.length; i<j; i++){
+            var key = keys[i];
+            def(target, key, src[key]);
+        }
+    }
     //响应式系统的入口
     function observe(value, asRootData){
         if(!isObject(value)){

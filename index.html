@@ -16,17 +16,20 @@
                 email: "1775724868@qq.com",
                 list: {
                     age: 34
-                }
+                },
+                arr: [1,2,3]
             },
             created: function(){
                 console.log("created->数据已经初始化："+this.name);
                 this.list.age = 18;
+                this.arr.push([4,5,6])
             },
             beforeCreate: function(){
                 console.log("beforeCreate->数据还没有初始化："+this.name)
             },
         });
-        console.log("变成"+vm.list.age+"岁了")
+        console.log("变成"+vm.list.age+"岁了");
+        console.log(vm.arr);
     </script>
 </body>
 </html>
