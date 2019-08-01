@@ -657,6 +657,10 @@
             initState(vm);
             //执行钩子函数created
             callHook(vm, "created");
+            //挂载组件
+            if(this.$options.el){
+                vm.$mount(this.$options.el);
+            }
         };
     }
     //Vue构造函数
@@ -684,6 +688,87 @@
     }
     //初始化
     initMixin(Vue);
+
+    //把模板编译成渲染函数
+    function compileToFuntions(template){
+        return {
+            render: "渲染函数"
+        }
+    }
+    function getOuterHTML(el) {
+        if(el.outerHTML){
+            return el.outerHTML;
+        } else {
+            var con = document.createElement("div");
+            con.appendChild(el.cloneNode(true));
+            return con.innerHTML;
+        }
+    }
+    function query(el){
+        if(typeof el === 'string'){
+            var element = document.querySelector(el);
+            if(!element){
+                warn("cannot fine element" + el)
+            }
+            return element;
+        } else {
+            return el;
+        }
+    }
+    function idToTemplate(id) {
+        var el = query(id);
+        return el && el.innerHTML;
+    }
+    //Watcher 观察者
+    function Watcher() {
+
+    }
+    //挂载组件
+    function mountComponent(vm, el){
+        //组件挂载时要做的事
+        var updateComponent = function(){
+            //1.render -> 调用渲染函数生成虚拟节点
+            //2._updata -> 把生成的虚拟节点渲染成真正的DOM
+        };
+        //渲染函数的观察者对象Watcher
+        new Watcher(vm, updateComponent, noop, {}, true);
+    }
+    //runtime运行时构建
+    Vue.prototype.$mount = function(el){
+        el = el && query(el);
+        //挂载组件
+        return mountComponent(this, el);
+    };
+    //缓存$mount
+    var mount = Vue.prototype.$mount;
+    //加入模板编译功能的构建
+    Vue.prototype.$mount = function(el){
+        el = el && query(el);
+        if(el === document.body || el === document.documentElement){
+            warn("禁止将组件挂载在body或html元素上。")
+        }
+        var options = this.$options;
+        if(!options.render){
+            //自定义配置template模板
+            template = options.template;
+            if(template){
+                if(typeof template === 'string'){
+                    if(template.charAt(0) === "#"){
+                        template = idToTemplate(template);
+                    }
+                }
+            } else if(el) {
+                template = getOuterHTML(el);
+            }
+            if(template){
+                //解析成渲染函数
+                var ref = compileToFuntions(template, {}, this);
+                //渲染函数
+                options.render = ref.render;
+            }
+        }
+        return mount.call(this, el);
+    };
     //初始化全局配置
     initExtend(Vue);
     return Vue;
