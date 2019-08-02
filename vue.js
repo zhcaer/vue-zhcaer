@@ -688,22 +688,10 @@
     }
     //初始化
     initMixin(Vue);
+    //初始化全局配置
+    initExtend(Vue);
 
-    //把模板编译成渲染函数
-    function compileToFuntions(template){
-        return {
-            render: "渲染函数"
-        }
-    }
-    function getOuterHTML(el) {
-        if(el.outerHTML){
-            return el.outerHTML;
-        } else {
-            var con = document.createElement("div");
-            con.appendChild(el.cloneNode(true));
-            return con.innerHTML;
-        }
-    }
+    var inBrowser = typeof window !== 'undefined';
     function query(el){
         if(typeof el === 'string'){
             var element = document.querySelector(el);
@@ -715,30 +703,117 @@
             return el;
         }
     }
-    function idToTemplate(id) {
-        var el = query(id);
-        return el && el.innerHTML;
-    }
-    //Watcher 观察者
-    function Watcher() {
-
-    }
-    //挂载组件
-    function mountComponent(vm, el){
-        //组件挂载时要做的事
-        var updateComponent = function(){
-            //1.render -> 调用渲染函数生成虚拟节点
-            //2._updata -> 把生成的虚拟节点渲染成真正的DOM
-        };
-        //渲染函数的观察者对象Watcher
-        new Watcher(vm, updateComponent, noop, {}, true);
-    }
     //runtime运行时构建
     Vue.prototype.$mount = function(el){
         el = el && query(el);
         //挂载组件
-        return mountComponent(this, el);
+        // return mountComponent(this, el);
     };
+    //编译器默认需要的选项
+    var baseOptions = {
+        expectHTML: true,
+        modules: [],
+        directives: {},
+        isPreTag: function(){},
+        isUnaryTag: function(){},//单标签
+        canBeleftOpenTag: function(){},//闭合标签
+        isReservedTag: function(){},//保留标签
+        mustUseProp: function(){},//props邦定
+        getTagNamespace: function(){},//命名空间
+        staticKeys: function(){},//根据modules生成字符串
+    };
+    function createFunction(code, errors) {
+        try {
+            return new Function(code)
+        } catch(err){
+            errors.push ({
+                err: err,
+                code: code
+            });
+            return noop
+        }
+    }
+    function createCompileToFunctionFn(compile){
+        //缓存对象,存储编译的结果
+        var cache = Object.create(null);
+        return function compileToFunctions(template, options, vm){
+            try {
+                new Function("return 1")
+            } catch(e) {
+                if (e.toString().match(/unsafe-eval|CSP/)) {
+                    console.error("编译器无法在此环境中正常工作")
+                }
+            }
+            var key = template;
+            if(cache[key]){
+                return cache[key]
+            }
+            var compiled = compile(template, options);
+            if(compiled.error && compiled.error.length){
+                console.log("打印编译的错误信息")
+            }
+            if(compiled.tips && compiled.tips.length){
+                console.log("打印编译的提示信息")
+            }
+            var res = {};
+            var fnGenErrors = [];
+            //把函数体字符串变成渲染函数
+            res.render = createFunction(compiled.render, fnGenErrors);
+            //渲染优化
+            // res.staticRenderFns = compiled.staticRenderFns.map(function (code) {
+            //     return createFunction(code, fnGenErrors)
+            // });
+            return (cache[key] = res)
+        }
+    }
+    function createCompilerCreate(baseCompile){
+        return function createCompiler(baseOptions){
+            function compile(template, options){
+                var finalOptions = Object.create(baseOptions);
+                //错误信息
+                var errors = [];
+                //提示信息
+                var tips = [];
+                //错误、提示信息的收集
+                finalOptions.warn = function(msg, tip){
+                    (tip ? tips : error).push(msg)
+                };
+                //检测用户有那些自定义的配置
+                if(options){
+
+                }
+                var compiled = baseCompile(template, finalOptions);
+                compiled.errors = errors;
+                compiled.tips = tips;
+                return compiled;
+            }
+            return {
+                compiler: compile,
+                compileToFunctions: createCompileToFunctionFn(compile),
+            }
+        }
+    }
+    //编译器的创建者
+    var createCompiler = createCompilerCreate(function baseCompile(template, options) {
+        return {
+            render: "函数体字符串"
+        }
+    });
+    //编译器
+    var ref$1 = createCompiler(baseOptions);
+    var compileToFunctions = ref$1.compileToFunctions;
+    var div;
+    function getShouldDecode(href) {
+        div = div || document.createElement('div');
+        div.innerHTML = href ? "<a href=\"\n\"/>" : "<div a=\"\n\"/>";
+        return div.innerHTML.indexOf('&#10;') > 0
+    }
+    var shouldDecodeNewlines = inBrowser ? getShouldDecode(false) : false;
+    var shouldDecodeNewlinesForHref = inBrowser ? getShouldDecode(true) : false;
+    function idToTemplate(id) {
+        var el = query(id);
+        return el && el.innerHTML;
+    }
     //缓存$mount
     var mount = Vue.prototype.$mount;
     //加入模板编译功能的构建
@@ -762,14 +837,26 @@
             }
             if(template){
                 //解析成渲染函数
-                var ref = compileToFuntions(template, {}, this);
+                var ref = compileToFunctions(template, {
+                    shouldDecodeNewlines: shouldDecodeNewlines,
+                    shouldDecodeNewlinesForHref: shouldDecodeNewlinesForHref,
+                    delimiters: options.delimiters,
+                    comments: options.comments
+                }, this);
                 //渲染函数
                 options.render = ref.render;
             }
         }
         return mount.call(this, el);
     };
-    //初始化全局配置
-    initExtend(Vue);
+    function getOuterHTML(el) {
+        if(el.outerHTML){
+            return el.outerHTML;
+        } else {
+            var con = document.createElement("div");
+            con.appendChild(el.cloneNode(true));
+            return con.innerHTML;
+        }
+    }
     return Vue;
 });

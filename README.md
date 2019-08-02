@@ -16,4 +16,5 @@ vue官网:https://cn.vuejs.org/
 
 八.$mount组件的挂载
 
+九.compileToFunctions渲染函数
 
