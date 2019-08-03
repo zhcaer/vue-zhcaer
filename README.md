@@ -18,3 +18,5 @@ vue官网:https://cn.vuejs.org/
 
 九.compileToFunctions渲染函数
 
+十.模板编译AST词法分析parseHTML
+

@@ -7,6 +7,7 @@
     var warn = function(msg){
         console.log("[Vue Warn:]" + msg)
     };
+    var warn$2;
     //Vue的实例个数
     var _uid = 0;
     var hasOwnProperty = Object.prototype.hasOwnProperty;
@@ -690,7 +691,6 @@
     initMixin(Vue);
     //初始化全局配置
     initExtend(Vue);
-
     var inBrowser = typeof window !== 'undefined';
     function query(el){
         if(typeof el === 'string'){
@@ -709,7 +709,7 @@
         //挂载组件
         // return mountComponent(this, el);
     };
-    //编译器默认需要的选项
+    //编译器默认选项
     var baseOptions = {
         expectHTML: true,
         modules: [],
@@ -722,6 +722,252 @@
         getTagNamespace: function(){},//命名空间
         staticKeys: function(){},//根据modules生成字符串
     };
+    var comment = /^<!\--/; //注释节点
+    var conditionalComment = /^<!\[/; //条件注释
+    var doctype = /^<!DOCTYPE [^>]+>/i; //doctype
+    var ncname = '[a-zA-Z_][\\w\\-\\.]*';   //  XML  <前缀+标签名>
+    var qnameCapture = "((?:" + ncname + "\\:)?" + ncname + ")";
+    var startTagOpen = new RegExp(("^<" + qnameCapture));
+    var startTagClose = /^\s*(\/?)>/;
+    var attribute = /^\s*([^\s"'<>\/=]+)(?:\s*(=)\s*(?:"([^"]*)"+|'([^']*)'+|([^\s"'=<>`]+)))?/;
+    var endTag = new RegExp(("^<\\/" + qnameCapture + "[^>]*>"));
+    var encodedAttr = /&(?:lt|gt|quot|amp);/g;
+    var isPlainTextElement = makeMap("script,style,textarea" ,true);
+    var isIgnoreNewlineTag = makeMap('pre,textarea', true);
+    var shouldIgnoreFirstNewline = function(tag, html) {
+        return tag && isIgnoreNewlineTag(tag) && html[0] === '\n';
+    };
+    function no(a, b, c){
+        return false;
+    }
+    function decodeAttr(value, shouldDecodeNewlines) {
+        var re = shouldDecodeNewlines ? encodedAttrWithNewLines : encodedAttr;
+        return value.replace(re, function(match) {
+            return decodingMap[match];
+        })
+    }
+    function parseHTML(html, options){
+        var stack = []; //存储标签名
+        var expectHTML = options.expectHTML; //true
+        var isUnaryTag$$1 = options.isUnaryTag || no;
+        var canBeLeftOpenTag$$1 = options.canBeLeftOpenTag || no;
+        var index = 0; //字符流的读入位置
+        var last, lastTag; //last还未被解析的html字符串  lastTag = 标签名
+        while (html) {
+            last = html;
+            if (!lastTag || !isPlainTextElement(lastTag)) {
+                //解析的内容不是在纯文本标签(script style textarea)
+                var textEnd = html.indexOf('<');
+                if (textEnd === 0) {
+                    //第一个字符是 < 注释节点
+                    if (comment.test(html)) {
+                        var commentEnd = html.indexOf('-->');
+
+                        if (commentEnd >= 0) {
+                            advance(commentEnd + 3); //切割(下标)
+                            continue
+                        }
+                    }
+                    //第一个字符是 < 条件注释
+                    if (conditionalComment.test(html)) {
+                        var conditionalEnd = html.indexOf(']>');
+
+                        if (conditionalEnd >= 0) {
+                            advance(conditionalEnd + 2);
+                            continue
+                        }
+                    }
+                    //第一个字符是 < DOCTYPE
+                    var doctypeMatch = html.match(doctype);
+                    if (doctypeMatch) {
+                        advance(doctypeMatch[0].length);
+                        continue
+                    }
+                    //第一个字符是 < 闭合标签
+                    var endTagMatch = html.match(endTag);
+                    if (endTagMatch) {
+                        var curIndex = index;
+                        advance(endTagMatch[0].length);
+                        parseEndTag(endTagMatch[1], curIndex, index);
+                        continue
+                    }
+                    //第一个字符是 < 标签    名称
+                    var startTagMatch = parseStartTag();
+                    if (startTagMatch) {
+                        handleStartTag(startTagMatch);
+                        if (shouldIgnoreFirstNewline(startTagMatch.tagName, html)) {
+                            advance(1);
+                        }
+                        continue
+                    }
+                }
+                var text = (void 0),
+                    rest = (void 0),
+                    next = (void 0);
+                if (textEnd >= 0) {
+                    rest = html.slice(textEnd);
+                    while(
+                        !endTag.test(rest) &&
+                        !startTagOpen.test(rest) &&
+                        !comment.test(rest) &&
+                        !conditionalComment.test(rest)
+                    ){
+                        next = rest.indexof('<', 1);
+                        if(next <0){
+                            break
+                        }
+                        textEnd += next;
+                        rest = html.slice(textEnd);
+                    }
+                    text = html.substring(0, textEnd);
+                    advance(textEnd);
+                }
+                if (textEnd < 0) {
+                    text = html;
+                    html = "";
+                }
+            } else {
+                //是在纯文本标签(script style textarea)
+            }
+        }
+        //字符串切割
+        function advance(n) {
+            index += n; //index    11 字符流的读入位置
+            html = html.substring(n); //删除 0-11
+        }
+        //获取标签名
+        function parseStartTag() {
+            var start = html.match(startTagOpen);
+            if (start) {
+                var match = {
+                    tagName: start[1],
+                    attrs: [],
+                    start: index
+                };
+                advance(start[0].length);
+                var end, attr;
+                while (!(end = html.match(startTagClose)) && (attr = html.match(attribute))) {
+                    advance(attr[0].length);
+                    match.attrs.push(attr);
+                }
+                if (end) {
+                    match.unarySlash = end[1];
+                    advance(end[0].length);
+                    match.end = index;
+                    return match
+                }
+            }
+        }
+        function handleStartTag(match) {
+            var tagName = match.tagName;
+            var unarySlash = match.unarySlash;
+
+            if (expectHTML) {
+                if (lastTag === 'p' && isNonPhrasingTag(tagName)) {
+                    parseEndTag(lastTag);
+                }
+                if (canBeLeftOpenTag$$1(tagName) && lastTag === tagName) {
+                    parseEndTag(tagName);
+                }
+            }
+
+            var unary = isUnaryTag$$1(tagName) || !!unarySlash;
+
+            var l = match.attrs.length;
+            var attrs = new Array(l);
+            for (var i = 0; i < l; i++) {
+                var args = match.attrs[i];
+                var value = args[3] || args[4] || args[5] || '';
+                var shouldDecodeNewlines = tagName === 'a' && args[1] === 'href' ?
+                    options.shouldDecodeNewlinesForHref :
+                    options.shouldDecodeNewlines;
+                attrs[i] = {
+                    name: args[1],
+                    value: decodeAttr(value, shouldDecodeNewlines)
+                };
+            }
+
+            if (!unary) {
+                stack.push({
+                    tag: tagName,
+                    lowerCasedTag: tagName.toLowerCase(),
+                    attrs: attrs
+                });
+                lastTag = tagName;
+            }
+
+            if (options.start) {
+                options.start(tagName, attrs, unary, match.start, match.end);
+            }
+        }
+        function parseEndTag(tagName, start, end) {
+            var pos, lowerCasedTagName;
+            if (start == null) {
+                start = index;
+            }
+            if (end == null) {
+                end = index;
+            }
+
+            // Find the closest opened tag of the same type
+            if (tagName) {
+                lowerCasedTagName = tagName.toLowerCase();
+                for (pos = stack.length - 1; pos >= 0; pos--) {
+                    if (stack[pos].lowerCasedTag === lowerCasedTagName) {
+                        break
+                    }
+                }
+            } else {
+                // If no tag name is provided, clean shop
+                pos = 0;
+            }
+
+            if (pos >= 0) {
+                // Close all the open elements, up the stack
+                for (var i = stack.length - 1; i >= pos; i--) {
+                    if (i > pos || !tagName &&
+                        options.warn
+                    ) {
+                        options.warn(
+                            ("tag <" + (stack[i].tag) + "> has no matching end tag.")
+                        );
+                    }
+                    if (options.end) {
+                        options.end(stack[i].tag, start, end);
+                    }
+                }
+
+                // Remove the open elements from the stack
+                stack.length = pos;
+                lastTag = pos && stack[pos - 1].tag;
+            } else if (lowerCasedTagName === 'br') {
+                if (options.start) {
+                    options.start(tagName, [], true, start, end);
+                }
+            } else if (lowerCasedTagName === 'p') {
+                if (options.start) {
+                    options.start(tagName, [], false, start, end);
+                }
+                if (options.end) {
+                    options.end(tagName, start, end);
+                }
+            }
+        }
+    }
+    //parse 解析       parser 解析器
+    function parse(template, options) {
+        //模板字符串词法分析
+        parseHTML(template, {
+            warn: warn$2,
+            expectHTML: options.expectHTML, //true
+            isUnaryTag: options.isUnaryTag, //检测元素是否为单标签
+            canBeLeftOpenTag: options.canBeLeftOpenTag, //   是否可以补全闭合的标签
+            shouldDecodeNewlines: options.shouldDecodeNewlines,
+            shouldDecodeNewlinesForHref: options.shouldDecodeNewlinesForHref,
+            shouldKeepComment: options.comments,
+            start: function start(tag, attrs, unary) {}
+        });
+    }
     function createFunction(code, errors) {
         try {
             return new Function(code)
@@ -795,8 +1041,11 @@
     }
     //编译器的创建者
     var createCompiler = createCompilerCreate(function baseCompile(template, options) {
+        var ast = parse(template.trim(), options);
         return {
-            render: "函数体字符串"
+            ast: ast,
+            render: "函数体字符串",
+            staticRenderFns: ""
         }
     });
     //编译器
